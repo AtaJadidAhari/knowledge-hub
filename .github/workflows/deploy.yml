@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -11,40 +10,53 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install JupyterLite dependencies
+        run: pip install -r jupyterlite/requirements.txt
+
+      - name: Build JupyterLite
+        run: |
+          cd jupyterlite
+          jupyter lite build --contents content --output-dir ../static/jupyterlite --base-url /knowledge-hub/jupyterlite/
+          cd ..
+          sed -i "s|\./|/knowledge-hub/jupyterlite/|g" static/jupyterlite/index.html
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: yarn
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
 
-      - name: Build
-        run: npm run build
+      - name: Build Docusaurus
+        run: yarn docusaurus build
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: build
+          path: ./build
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - name: Deploy
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
